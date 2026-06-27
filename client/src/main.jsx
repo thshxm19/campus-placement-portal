@@ -18,6 +18,103 @@ import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+const fallback = {
+  students: [
+    {
+      id: "stu-1",
+      name: "Aarav Sharma",
+      email: "aarav@campus.edu",
+      branch: "Computer Science",
+      cgpa: 8.7,
+      skills: ["React", "Node.js", "MongoDB", "JavaScript", "DSA"],
+      resumeText: "Full stack developer skilled in React, Node.js, Express, MongoDB, REST APIs, JavaScript, data structures and algorithms."
+    },
+    {
+      id: "stu-2",
+      name: "Nisha Verma",
+      email: "nisha@campus.edu",
+      branch: "Information Technology",
+      cgpa: 8.2,
+      skills: ["Java", "Spring Boot", "SQL", "DSA", "APIs"],
+      resumeText: "Backend developer with Java, Spring Boot, SQL, REST APIs, DSA practice and authentication systems."
+    },
+    {
+      id: "stu-3",
+      name: "Kabir Mehta",
+      email: "kabir@campus.edu",
+      branch: "Electronics and Communication",
+      cgpa: 7.6,
+      skills: ["Python", "Machine Learning", "React", "Data Analysis"],
+      resumeText: "Built Python machine learning models, React dashboards and prediction tools for campus research."
+    }
+  ],
+  companies: [
+    {
+      id: "cmp-1",
+      name: "Nexora Labs",
+      industry: "AI SaaS",
+      location: "Bengaluru",
+      description: "Builds AI workflow products for enterprise hiring and analytics."
+    }
+  ],
+  jobs: [
+    {
+      id: "job-1",
+      companyId: "cmp-1",
+      title: "MERN Stack Developer Intern",
+      package: "8 LPA",
+      location: "Bengaluru",
+      type: "Internship + PPO",
+      requiredCgpa: 7,
+      skills: ["React", "Node.js", "Express", "MongoDB", "JavaScript"],
+      description: "Work on production dashboards, APIs, and placement analytics."
+    },
+    {
+      id: "job-2",
+      companyId: "cmp-1",
+      title: "Software Engineer Trainee",
+      package: "6.5 LPA",
+      location: "Hyderabad",
+      type: "Full-time",
+      requiredCgpa: 7.5,
+      skills: ["JavaScript", "DSA", "SQL", "APIs"],
+      description: "Build reliable backend services and solve data-heavy product problems."
+    }
+  ],
+  applications: [
+    {
+      id: "app-1",
+      studentId: "stu-1",
+      jobId: "job-1",
+      status: "Shortlisted",
+      matchScore: 94,
+      appliedAt: "2026-06-20"
+    }
+  ],
+  tests: [
+    {
+      id: "test-1",
+      jobId: "job-1",
+      title: "MERN Coding Assessment",
+      durationMinutes: 45,
+      questions: [
+        {
+          id: "q-1",
+          title: "Two Sum",
+          prompt: "Write a function twoSum(nums, target) that returns the indices of two numbers adding up to target.",
+          starterCode: "function twoSum(nums, target) {\n  // your code here\n}\n\nconsole.log(twoSum([2,7,11,15], 9));"
+        },
+        {
+          id: "q-2",
+          title: "Validate Brackets",
+          prompt: "Write a function isValid(s) that returns true when brackets are balanced.",
+          starterCode: "function isValid(s) {\n  // your code here\n}\n\nconsole.log(isValid('()[]{}'));"
+        }
+      ]
+    }
+  ]
+};
+
 async function api(path, options) {
   const response = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -25,6 +122,67 @@ async function api(path, options) {
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
+}
+
+function localScore(student, job) {
+  const resume = `${student.resumeText} ${student.skills.join(" ")}`.toLowerCase();
+  const matchedSkills = job.skills.filter((skill) => resume.includes(skill.toLowerCase()));
+  const skillScore = (matchedSkills.length / job.skills.length) * 75;
+  const cgpaScore = student.cgpa >= job.requiredCgpa ? 20 : 8;
+  return {
+    score: Math.min(99, Math.round(skillScore + cgpaScore)),
+    matchedSkills,
+    missingSkills: job.skills.filter((skill) => !matchedSkills.includes(skill)),
+    verdict: matchedSkills.length >= Math.ceil(job.skills.length * 0.7) ? "Strong match" : "Needs skill improvement"
+  };
+}
+
+function buildFallbackState(seed = fallback) {
+  const student = seed.students[0];
+  const recommendedJobs = seed.jobs.map((job) => ({
+    ...job,
+    company: seed.companies.find((company) => company.id === job.companyId),
+    match: localScore(student, job)
+  }));
+  const applications = seed.applications.map((app) => {
+    const job = seed.jobs.find((item) => item.id === app.jobId);
+    return {
+      ...app,
+      job,
+      company: seed.companies.find((company) => company.id === job.companyId)
+    };
+  });
+  const company = seed.companies[0];
+  const jobs = seed.jobs
+    .filter((job) => job.companyId === company.id)
+    .map((job) => ({
+      ...job,
+      applicants: seed.applications
+        .filter((app) => app.jobId === job.id)
+        .map((app) => ({
+          ...app,
+          student: seed.students.find((item) => item.id === app.studentId)
+        }))
+    }));
+  const skillDemand = seed.jobs.flatMap((job) => job.skills).reduce((acc, skill) => {
+    acc[skill] = (acc[skill] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    student: { student, applications, recommendedJobs },
+    company: { company, jobs },
+    tests: seed.tests,
+    students: seed.students,
+    analytics: {
+      totalStudents: seed.students.length,
+      totalCompanies: seed.companies.length,
+      totalJobs: seed.jobs.length,
+      totalApplicants: new Set(seed.applications.map((app) => app.studentId)).size,
+      shortlisted: seed.applications.filter((app) => app.status === "Shortlisted").length,
+      averageMatch: Math.round(seed.applications.reduce((sum, app) => sum + app.matchScore, 0) / seed.applications.length),
+      topSkills: Object.entries(skillDemand).map(([skill, count]) => ({ skill, count }))
+    }
+  };
 }
 
 function Stat({ icon: Icon, label, value }) {
@@ -304,22 +462,35 @@ function App() {
   const [tests, setTests] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [students, setStudents] = useState([]);
+  const [offlineDemo, setOfflineDemo] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
-    const [studentData, companyData, testData, analyticsData, studentsData] = await Promise.all([
-      api("/students/stu-1/dashboard"),
-      api("/companies/cmp-1/portal"),
-      api("/tests"),
-      api("/analytics"),
-      api("/students")
-    ]);
-    setStudent(studentData);
-    setCompany(companyData);
-    setTests(testData);
-    setAnalytics(analyticsData);
-    setStudents(studentsData);
+    try {
+      const [studentData, companyData, testData, analyticsData, studentsData] = await Promise.all([
+        api("/students/stu-1/dashboard"),
+        api("/companies/cmp-1/portal"),
+        api("/tests"),
+        api("/analytics"),
+        api("/students")
+      ]);
+      setStudent(studentData);
+      setCompany(companyData);
+      setTests(testData);
+      setAnalytics(analyticsData);
+      setStudents(studentsData);
+      setOfflineDemo(false);
+    } catch (error) {
+      console.warn("API unavailable, using hosted demo data", error);
+      const demo = buildFallbackState();
+      setStudent(demo.student);
+      setCompany(demo.company);
+      setTests(demo.tests);
+      setAnalytics(demo.analytics);
+      setStudents(demo.students);
+      setOfflineDemo(true);
+    }
     setLoading(false);
   };
 
@@ -341,6 +512,26 @@ function App() {
   );
 
   const apply = async (jobId) => {
+    if (offlineDemo) {
+      const demo = buildFallbackState({
+        ...fallback,
+        applications: [
+          {
+            id: `app-${Date.now()}`,
+            studentId: "stu-1",
+            jobId,
+            status: "Applied",
+            matchScore: 88,
+            appliedAt: new Date().toISOString().slice(0, 10)
+          },
+          ...fallback.applications
+        ]
+      });
+      setStudent(demo.student);
+      setCompany(demo.company);
+      setAnalytics(demo.analytics);
+      return;
+    }
     await api("/applications", {
       method: "POST",
       body: JSON.stringify({ studentId: "stu-1", jobId })
@@ -349,15 +540,42 @@ function App() {
   };
 
   const createJob = async (job) => {
+    if (offlineDemo) {
+      const nextJob = {
+        ...job,
+        id: `job-${Date.now()}`,
+        skills: job.skills.split(",").map((skill) => skill.trim()).filter(Boolean),
+        requiredCgpa: Number(job.requiredCgpa)
+      };
+      const demo = buildFallbackState({ ...fallback, jobs: [nextJob, ...fallback.jobs] });
+      setStudent(demo.student);
+      setCompany(demo.company);
+      setAnalytics(demo.analytics);
+      return;
+    }
     await api("/jobs", { method: "POST", body: JSON.stringify(job) });
     await load();
   };
 
-  const submitTest = (testId, answers) =>
-    api(`/tests/${testId}/submit`, {
+  const submitTest = (testId, answers) => {
+    if (offlineDemo) {
+      const test = tests.find((item) => item.id === testId);
+      const solved = test.questions.filter((question) => String(answers[question.id] || "").includes("return")).length;
+      return Promise.resolve({
+        id: `sub-${Date.now()}`,
+        testId,
+        studentId: "stu-1",
+        solved,
+        total: test.questions.length,
+        score: Math.round((solved / test.questions.length) * 100),
+        submittedAt: new Date().toISOString()
+      });
+    }
+    return api(`/tests/${testId}/submit`, {
       method: "POST",
       body: JSON.stringify({ studentId: "stu-1", answers })
     });
+  };
 
   return (
     <main>
@@ -377,6 +595,7 @@ function App() {
       </nav>
 
       {loading && <div className="loading">Loading placement workspace...</div>}
+      {!loading && offlineDemo && <div className="demo-banner">Hosted demo mode: frontend is live, backend API runs locally or on your server.</div>}
       {!loading && active === "student" && student && <StudentDashboard data={student} onApply={apply} />}
       {!loading && active === "company" && company && <CompanyPortal data={company} onCreateJob={createJob} />}
       {!loading && active === "test" && <CodingTest tests={tests} onSubmit={submitTest} />}
